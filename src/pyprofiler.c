@@ -11,22 +11,22 @@
 #include <sys/ioctl.h>
 #include <sys/resource.h>
 #include <time.h>
-#include <getopt.h> // 添加getopt支持命令行参数
+#include <getopt.h> // Add getopt support for command line arguments
 
 #include "pyprofiler.skel.h"
 
-// 栈帧信息结构
+// Stack frame information structure
 struct stack_frame_info {
 	char filename[100];
 	char funcname[100];
 };
 
-// 栈追踪数据结构
+// Stack trace data structure
 struct stack_trace {
 	__u32 pid;
 	__u32 num_frames;
-	__u64 timestamp_ns; // 新增
-	struct stack_frame_info frames[20]; // 最多20个栈帧
+	__u64 timestamp_ns; // New field
+	struct stack_frame_info frames[20]; // Maximum 20 stack frames
 };
 
 static int libbpf_print_fn(enum libbpf_print_level level, const char *format, va_list args)
@@ -35,8 +35,8 @@ static int libbpf_print_fn(enum libbpf_print_level level, const char *format, va
 }
 
 static volatile bool exiting = false;
-static FILE *output_file = NULL; // 输出文件
-static int output_format = 0; // 0=标准输出，1=结构化输出
+static FILE *output_file = NULL; // Output file
+static int output_format = 0; // 0=standard output, 1=structured output
 
 static void sig_handler(int sig)
 {
@@ -54,7 +54,7 @@ void handle_event(void *ctx, int cpu, void *data, __u32 data_size)
 	struct stack_trace *trace = (struct stack_trace *)data;
 
 	if (output_format == 0) {
-		// 标准人类可读输出
+		// Standard human-readable output
 		fprintf(output_file, "EVENT\n");
 		fprintf(output_file, "timestamp=%llu\n", (unsigned long long)trace->timestamp_ns);
 		fprintf(output_file, "pid=%u\n", trace->pid);
@@ -66,7 +66,7 @@ void handle_event(void *ctx, int cpu, void *data, __u32 data_size)
 		}
 		fprintf(output_file, "END\n\n");
 	} else {
-		// 结构化输出，更易于解析
+		// Structured output, easier to parse
 		fprintf(output_file, "EVENT|%llu|%u|%u", (unsigned long long)trace->timestamp_ns,
 			trace->pid, trace->num_frames);
 
@@ -77,7 +77,7 @@ void handle_event(void *ctx, int cpu, void *data, __u32 data_size)
 		fprintf(output_file, "\n");
 	}
 
-	// 确保输出立即写入文件，这样即使程序崩溃也能保留数据
+	// Ensure output is immediately written to file, so data is preserved even if program crashes
 	fflush(output_file);
 }
 
@@ -108,17 +108,17 @@ int main(int argc, char **argv)
 	struct perf_buffer *pb = NULL;
 	struct bpf_link **links = NULL;
 	int target_pid = -1;
-	int sample_freq = 99; // 默认采样率
+	int sample_freq = 99; // Default sampling rate
 	char *output_path = NULL;
 
-	// 定义长选项
+	// Define long options
 	static struct option long_options[] = { { "help", no_argument, 0, 'h' },
 						{ "output", required_argument, 0, 'o' },
 						{ "format", required_argument, 0, 'f' },
 						{ "rate", required_argument, 0, 'r' },
 						{ 0, 0, 0, 0 } };
 
-	// 解析命令行参数
+	// Parse command line arguments
 	int option_index = 0;
 	int opt;
 
@@ -149,7 +149,7 @@ int main(int argc, char **argv)
 		}
 	}
 
-	// 检查剩余的参数是否包含PID
+	// Check if remaining arguments contain PID
 	if (optind >= argc) {
 		fprintf(stderr, "Error: PID argument is required\n");
 		print_usage(argv[0]);
@@ -162,7 +162,7 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
-	// 设置输出文件
+	// Set output file
 	if (output_path) {
 		output_file = fopen(output_path, "w");
 		if (!output_file) {
@@ -173,7 +173,7 @@ int main(int argc, char **argv)
 		output_file = stdout;
 	}
 
-	// 写入元数据头部
+	// Write metadata header
 	if (output_format == 0) {
 		fprintf(output_file, "# Python Stack Trace Data\n");
 		fprintf(output_file, "# Target PID: %d\n", target_pid);
@@ -185,28 +185,28 @@ int main(int argc, char **argv)
 		fprintf(output_file, "HEADER|timestamp|pid|frame_count|[frames...]\n");
 	}
 
-	// 设置更高的资源限制
+	// Set higher resource limits
 	struct rlimit rlim = { RLIM_INFINITY, RLIM_INFINITY };
 	setrlimit(RLIMIT_MEMLOCK, &rlim);
 
-	// 设置libbpf日志回调
+	// Set libbpf log callback
 	libbpf_set_print(libbpf_print_fn);
 
-	// 打开BPF应用
+	// Open BPF application
 	skel = pyprofiler_bpf__open();
 	if (!skel) {
 		fprintf(stderr, "Failed to open BPF skeleton\n");
 		return 1;
 	}
 
-	// 加载并验证BPF程序
+	// Load and verify BPF program
 	err = pyprofiler_bpf__load(skel);
 	if (err) {
 		fprintf(stderr, "Failed to load and verify BPF skeleton\n");
 		goto cleanup;
 	}
 
-	// 将目标PID写入BPF映射
+	// Write target PID to BPF map
 	int key = 0;
 	int map_fd = bpf_map__fd(skel->maps.filter_pid);
 	err = bpf_map_update_elem(map_fd, &key, &target_pid, BPF_ANY);
@@ -215,22 +215,22 @@ int main(int argc, char **argv)
 		goto cleanup;
 	}
 
-	// 设置信号处理
+	// Set signal handling
 	signal(SIGINT, sig_handler);
 	signal(SIGTERM, sig_handler);
 
-	// 设置性能事件属性
+	// Set performance event attributes
 	memset(&attr, 0, sizeof(attr));
 	attr.type = PERF_TYPE_SOFTWARE;
 	attr.config = PERF_COUNT_SW_CPU_CLOCK;
-	attr.sample_period = 0; // 使用freq而不是period
+	attr.sample_period = 0; // Use freq instead of period
 	attr.sample_freq = sample_freq;
 	attr.freq = 1;
 
-	// 获取可用CPU数量
+	// Get available CPU count
 	int ncpus = libbpf_num_possible_cpus();
 
-	// 为每个CPU链接分配内存
+	// Allocate memory for each CPU link
 	links = calloc(ncpus, sizeof(*links));
 	if (!links) {
 		fprintf(stderr, "Failed to allocate memory for links\n");
@@ -238,9 +238,9 @@ int main(int argc, char **argv)
 		goto cleanup;
 	}
 
-	// 为每个CPU创建性能事件并附加BPF程序
+	// Create performance event and attach BPF program for each CPU
 	for (i = 0; i < ncpus; i++) {
-		// 对全局进行采样，而不是特定进程
+		// Sample globally, not a specific process
 		perf_fd = perf_event_open(&attr, -1, i, -1, PERF_FLAG_FD_CLOEXEC);
 		if (perf_fd < 0) {
 			err = -errno;
@@ -248,7 +248,7 @@ int main(int argc, char **argv)
 			goto cleanup;
 		}
 
-		// 使用最新的API版本
+		// Use the latest API version
 		links[i] = bpf_program__attach_perf_event(skel->progs.python_stack_trace, perf_fd);
 		if (!links[i]) {
 			err = -errno;
@@ -258,8 +258,8 @@ int main(int argc, char **argv)
 		}
 	}
 
-	// 设置性能缓冲区
-	pb = perf_buffer__new(bpf_map__fd(skel->maps.events), 8 /* 页数 */, handle_event,
+	// Set performance buffer
+	pb = perf_buffer__new(bpf_map__fd(skel->maps.events), 8 /* page count */, handle_event,
 			      handle_lost_events, NULL, NULL);
 	if (!pb) {
 		err = -errno;
@@ -270,9 +270,9 @@ int main(int argc, char **argv)
 	fprintf(stderr, "Tracing Python stack for PID %d at %d Hz... Press Ctrl+C to exit.\n",
 		target_pid, sample_freq);
 
-	// 主循环
+	// Main loop
 	while (!exiting) {
-		err = perf_buffer__poll(pb, 100 /* 超时，毫秒 */);
+		err = perf_buffer__poll(pb, 100 /* timeout in milliseconds */);
 		if (err < 0 && err != -EINTR) {
 			fprintf(stderr, "Error polling perf buffer: %d\n", err);
 			goto cleanup;
@@ -280,10 +280,10 @@ int main(int argc, char **argv)
 	}
 
 cleanup:
-	// 释放所有资源
+	// Release all resources
 	perf_buffer__free(pb);
 
-	// 清理BPF链接
+	// Clean up BPF links
 	if (links) {
 		for (i = 0; i < ncpus; i++) {
 			if (links[i])
@@ -294,7 +294,7 @@ cleanup:
 
 	pyprofiler_bpf__destroy(skel);
 
-	// 关闭输出文件
+	// Close output file
 	if (output_file && output_file != stdout) {
 		fclose(output_file);
 	}
